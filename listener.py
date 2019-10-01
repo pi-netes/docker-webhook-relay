@@ -1,44 +1,46 @@
 import json
+import os
 from flask import Flask, jsonify, request
 from waitress import serve
 from kubernetes import client, config
 
 
-def listPods():
-    # config.load_incluster_config()
-    config.load_kube_config(config_file="./kubeconfig")
-
-    v1 = client.CoreV1Api()
-    print("Listing pods with their IPs:")
+config.load_incluster_config()
+# config.load_kube_config(config_file="./kubeconfig")
+v1 = client.CoreV1Api()
+def getMatchingDeployments(image):
     ret = v1.list_pod_for_all_namespaces(watch=False)
-    for i in ret.items:
-        # print("%s\t%s\t%s\t%s" %
-              # (i.status.pod_ip, i.metadata.namespace, i.metadata.name, i.spec))
-        print(i)
+    return [ i for i in ret.items if i.spec.containers[0].image == image], [i.metadata.labels["app"] for i in ret.items if i.spec.containers[0].image == image]
+
+def rolloutRestart(i):
+    # command = 'kubectl --kubeconfig ./kubeconfig rollout restart deployment/' + i.metadata.labels["app"] + ' -n ' + i.metadata.namespace
+    command = 'kubectl rollout restart deployment/' + i.metadata.labels["app"] + ' -n ' + i.metadata.namespace
+    os.system(command)
+
+def getImageFromWebhook(request):
+    data = request.get_json()
+    data = json.loads(request.get_data())
+    print(data)
+    tag = data['push_data']['tag']
+    return data['repository']['repo_name'] + ":" + tag
 
 app = Flask(__name__)
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        data = request.get_json()
+        image = getImageFromWebhook(request)
+        deploymentsToRollout, res = getMatchingDeployments(image)
 
-        if data is None:
-            data = json.loads(request.get_data())
+        for deployment in deploymentsToRollout:
+            rolloutRestart(deployment)
 
-        print(data)
-
-        try:
-            environment = data['push_data']['tag']
-            repo = data['repository']['repo_name']
-        except Exception as e:
-            print('error, could not deploy', e)
-            return jsonify(success=False), 500
+        return jsonify(res)
+        # return "restarting pods"
 
 
     if request.method == 'GET':
         return "i am listening!"
 
 if __name__ == "__main__":
-    listPods()
     serve(app, host='0.0.0.0', port=3000)
