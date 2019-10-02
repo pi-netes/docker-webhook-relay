@@ -10,7 +10,9 @@ config.load_incluster_config()
 v1 = client.CoreV1Api()
 def getMatchingDeployments(image):
     ret = v1.list_pod_for_all_namespaces(watch=False)
-    return [ i for i in ret.items if i.spec.containers[0].image == image], [i.metadata.labels["app"] for i in ret.items if i.spec.containers[0].image == image]
+    pods = [ i for i in ret.items if i.spec.containers[0].image == image]
+    deployments = [i.metadata.labels["app"] for i in ret.items if i.spec.containers[0].image == image]
+    return pods, deployments
 
 def rolloutRestart(i):
     # command = 'kubectl --kubeconfig ./kubeconfig rollout restart deployment/' + i.metadata.labels["app"] + ' -n ' + i.metadata.namespace
