@@ -6,6 +6,7 @@ from kubernetes import client, config
 
 
 config.load_incluster_config()
+# if developing locally, this might be helpful
 # config.load_kube_config(config_file="./kubeconfig")
 v1 = client.CoreV1Api()
 def getMatchingDeployments(image):
@@ -14,9 +15,9 @@ def getMatchingDeployments(image):
     deployments = [i.metadata.labels["app"] for i in ret.items if i.spec.containers[0].image == image]
     return pods, deployments
 
-def rolloutRestart(i):
-    # command = 'kubectl --kubeconfig ./kubeconfig rollout restart deployment/' + i.metadata.labels["app"] + ' -n ' + i.metadata.namespace
-    command = 'kubectl rollout restart deployment/' + i.metadata.labels["app"] + ' -n ' + i.metadata.namespace
+def rolloutRestart(pod):
+    # command = 'kubectl --kubeconfig ./kubeconfig rollout restart deployment/' + pod.metadata.labels["app"] + ' -n ' + pod.metadata.namespace
+    command = 'kubectl rollout restart deployment/' + pod.metadata.labels["app"] + ' -n ' + pod.metadata.namespace
     os.system(command)
 
 def getImageFromWebhook(request):
@@ -32,12 +33,12 @@ app = Flask(__name__)
 def index():
     if request.method == 'POST':
         image = getImageFromWebhook(request)
-        deploymentsToRollout, res = getMatchingDeployments(image)
+        pods, deployments = getMatchingDeployments(image)
 
-        for deployment in deploymentsToRollout:
-            rolloutRestart(deployment)
+        for pod in pods:
+            rolloutRestart(pod)
 
-        return jsonify(res)
+        return jsonify(deployments)
         # return "restarting pods"
 
 
